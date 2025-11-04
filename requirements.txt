@@ -1,0 +1,23 @@
+# 核心依赖
+Pillow>=10.0.0
+pdf2image>=1.16.0
+paddlepaddle>=2.5.0
+paddleocr>=2.7.0
+opencv-python>=4.5.0  # 用于图像预处理（提升坐标精度）
+
+# 可选：PPStructureV3支持（用于文档优化，提供更高精度的坐标识别）
+# 如果需要使用PPStructureV3，请取消下面一行的注释并安装：
+# pip install "paddlex[ocr]"
+# 注意：如果未安装，程序会自动降级使用标准PaddleOCR
+
+# 可选：如果需要更好的OCR效果
+# easyocr>=1.7.0
+
+# DOCX文件支持
+python-docx>=1.0.0
+
+# DOC文件支持（仅Windows，使用COM对象）
+# pywin32>=300
+# 安装方法: pip install pywin32
+# 注意：DOC格式需要系统安装Microsoft Word或LibreOffice
+

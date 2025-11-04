@@ -1,0 +1,38 @@
+{
+  "说明": "这是配置文件示例",
+  "以下为可配置项": "",
+  
+  "output_dir": "./output",
+  "ocr_lang": "ch",
+  "use_angle_cls": true,
+  "mode": "normal",
+  
+  "question_patterns": [
+    "^\\d+\\.",
+    "^[一二三四五六七八九十]+[、．]",
+    "^[（(）)\\[\\]][0-9]+[）)\\]）]",
+    "^[A-Z]\\.",
+    "^(选择题|填空题|简答题|计算题|阅读理解|解答题)"
+  ],
+  
+  "answer_patterns": [
+    "^【答案】",
+    "^【解析】",
+    "^【详解】",
+    "^参考答案",
+    "^Answer\\s*:?",
+    "^答案\\s*:?"
+  ],
+  
+  "min_zone_height": 50,
+  "min_zone_width": 200,
+  "vertical_margin": 10,
+  "horizontal_margin": 5,
+  
+  "使用说明": {
+    "步骤1": "复制此文件为 my_config.json",
+    "步骤2": "根据您的试卷格式修改上面的正则表达式",
+    "步骤3": "运行: python main.py -i sample.pdf --config my_config.json"
+  }
+}
+
