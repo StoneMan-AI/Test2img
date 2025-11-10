@@ -146,6 +146,10 @@ def main():
     parser.add_argument('--mode', choices=['debug', 'normal', 'fast'], 
                        default='normal',
                        help='运行模式 (默认: normal)')
+    parser.add_argument('-t', '--question-type',
+                       choices=['0', '1', 'chinese', 'arabic'],
+                       default='0',
+                       help='题目主类型：0或chinese表示中文大题，1或arabic表示阿拉伯数字小题')
     
     args = parser.parse_args()
     
@@ -153,6 +157,13 @@ def main():
     config = Config.from_file(args.config) if args.config else Config()
     config.output_dir = Path(args.output)
     config.mode = args.mode
+
+    # 根据命令行参数设置题目主类型
+    question_type_arg = args.question_type
+    if question_type_arg in ('0', 'chinese'):
+        config.question_primary_type = 'chinese'
+    elif question_type_arg in ('1', 'arabic'):
+        config.question_primary_type = 'arabic'
     
     # 确保输出目录存在
     config.output_dir.mkdir(parents=True, exist_ok=True)

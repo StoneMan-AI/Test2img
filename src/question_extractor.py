@@ -61,6 +61,8 @@ class QuestionExtractor:
         current_question = None
         is_chinese_question = False
         nested_sub_numbers = []  # 记录当前题目累积的嵌套子题编号
+        primary_type = getattr(self.config, 'question_primary_type', 'chinese') if self.config else 'chinese'
+        prefer_chinese_primary = primary_type != 'arabic'
         
         for idx, line_data in enumerate(ocr_result):
             if not line_data:
@@ -78,57 +80,18 @@ class QuestionExtractor:
             line_y_min = min(y_coords)
             line_y_max = max(y_coords)
             
-            # 检查是否是中文数字大题
             is_current_chinese = self.pattern_matcher.is_chinese_number_question(line_text)
+            is_current_sub = self.pattern_matcher.is_sub_question(line_text)
+            is_current_nested = self.pattern_matcher.is_nested_sub_question(line_text)
             
-            # 如果是中文大题
+            # 中文大题处理
             if is_current_chinese:
-                # 先保存当前题目
-                if current_question:
-                    questions.append(current_question)
-                
-                # 重置嵌套子题编号列表（开始新题目）
-                nested_sub_numbers = []
-                
-                # 检查是否重复位置
-                y_pos = int(line_y_min)
-                if y_pos in seen_start_positions:
-                    print(f"    ⚠ 跳过重复位置: y={y_pos}, 文本={line_text[:30]}")
-                    continue
-                
-                seen_start_positions.add(y_pos)
-                
-                # 计算文字高度
-                text_height = int(line_y_max - line_y_min)
-                
-                # 开始新的中文大题
-                current_question = {
-                    'type': 'question',
-                    'start_y': y_pos,
-                    'start_x': 0,
-                    'text': line_text,
-                    'page': page_num,
-                    'is_chinese_question': True,
-                    'question_type': 'chinese',
-                    'text_height': text_height,
-                    'nested_sub_numbers': []
-                }
-                is_chinese_question = True
-                print(f"    [发现] 发现大题 (行{len(questions)+1}): {line_text[:30]} (y={y_pos}, h={text_height})")
-            
-            # 检查是否是阿拉伯数字小题
-            elif self.pattern_matcher.is_sub_question(line_text):
-                # 如果当前在中文大题下，不创建新的独立题目，继续累积到大题中
-                if is_chinese_question and current_question:
-                    if debug_mode:
-                        print(f"    [小题] 继续累积到大题: {line_text[:30]}")
-                    continue
-                else:
-                    # 不在大题下，创建新的独立小题
+                if prefer_chinese_primary:
                     if current_question:
                         questions.append(current_question)
                     
-                    # 检查是否重复位置
+                    nested_sub_numbers = []
+                    
                     y_pos = int(line_y_min)
                     if y_pos in seen_start_positions:
                         print(f"    ⚠ 跳过重复位置: y={y_pos}, 文本={line_text[:30]}")
@@ -136,11 +99,7 @@ class QuestionExtractor:
                     
                     seen_start_positions.add(y_pos)
                     
-                    # 计算文字高度
                     text_height = int(line_y_max - line_y_min)
-                    
-                    # 重置嵌套子题编号列表（开始新题目）
-                    nested_sub_numbers = []
                     
                     current_question = {
                         'type': 'question',
@@ -148,39 +107,87 @@ class QuestionExtractor:
                         'start_x': 0,
                         'text': line_text,
                         'page': page_num,
-                        'is_chinese_question': False,
-                        'is_arabic_question': True,
-                        'question_type': 'sub',
+                        'is_chinese_question': True,
+                        'question_type': 'chinese',
                         'text_height': text_height,
                         'nested_sub_numbers': []
                     }
+                    is_chinese_question = True
+                    print(f"    [发现] 发现大题 (行{len(questions)+1}): {line_text[:30]} (y={y_pos}, h={text_height})")
+                    continue
+                else:
+                    boundary_y = int(line_y_min)
+                    if current_question:
+                        question_start_y = current_question.get('start_y', boundary_y)
+                        if boundary_y > question_start_y:
+                            current_question['early_end_y'] = boundary_y
+                            current_question['early_end_text'] = line_text[:30]
+                            if debug_mode:
+                                print(f"    [边界] 中文大题用作结束坐标: y={boundary_y}, 文本={line_text[:30]}")
+                        else:
+                            if debug_mode:
+                                print(f"    [边界] 中文大题坐标无效 (y={boundary_y} <= start_y={question_start_y})，保持原值")
+                        questions.append(current_question)
+                        current_question = None
+                    nested_sub_numbers = []
                     is_chinese_question = False
-                    print(f"    [发现] 发现小题 (行{len(questions)+1}): {line_text[:30]} (y={y_pos}, h={text_height})")
+                    if debug_mode and not current_question:
+                        print(f"    [跳过] 中文大题作为段落标题: {line_text[:30]}")
+                    continue
             
-            # 检查是否是嵌套小题（(1)、（2）、[3]等，应累积到上一级题目中）
-            elif self.pattern_matcher.is_nested_sub_question(line_text):
-                # 如果当前有任何题目，继续累积
+            # 阿拉伯数字小题处理
+            if is_current_sub:
+                if prefer_chinese_primary and is_chinese_question and current_question:
+                    if debug_mode:
+                        print(f"    [小题] 继续累积到大题: {line_text[:30]}")
+                    continue
+                
                 if current_question:
-                    # 提取嵌套子题编号
+                    questions.append(current_question)
+                
+                y_pos = int(line_y_min)
+                if y_pos in seen_start_positions:
+                    print(f"    ⚠ 跳过重复位置: y={y_pos}, 文本={line_text[:30]}")
+                    continue
+                
+                seen_start_positions.add(y_pos)
+                text_height = int(line_y_max - line_y_min)
+                nested_sub_numbers = []
+                
+                current_question = {
+                    'type': 'question',
+                    'start_y': y_pos,
+                    'start_x': 0,
+                    'text': line_text,
+                    'page': page_num,
+                    'is_chinese_question': False,
+                    'is_arabic_question': True,
+                    'question_type': 'sub',
+                    'text_height': text_height,
+                    'nested_sub_numbers': []
+                }
+                is_chinese_question = False
+                print(f"    [发现] 发现小题 (行{len(questions)+1}): {line_text[:30]} (y={y_pos}, h={text_height})")
+                continue
+            
+            # 嵌套小题处理
+            if is_current_nested:
+                if current_question:
                     nested_number = self.pattern_matcher.extract_nested_sub_number(line_text)
                     
                     if nested_number is not None:
-                        # 记录嵌套子题编号
                         nested_sub_numbers.append(nested_number)
                         current_question['nested_sub_numbers'] = nested_sub_numbers.copy()
                         
-                        # 检查后续3行是否按顺序出现下一个数字子题（支持跨页）
                         early_end_info = self._check_next_nested_sub_question(
                             idx, ocr_result, nested_number, page_num, 
                             all_page_ocr_results, total_pages, debug_mode
                         )
                         
-                        # 处理跨页标记
                         if early_end_info.get('cross_page'):
                             current_question['cross_page'] = True
                             current_question['cross_page_to'] = early_end_info.get('cross_page_to')
                         
-                        # 如果3行内没有找到下一个子题，提前确定结束位置
                         found_next_nested = early_end_info.get('found_next_nested', False)
                         early_end_y = early_end_info.get('early_end_y')
                         early_end_text = early_end_info.get('early_end_text')
@@ -192,7 +199,6 @@ class QuestionExtractor:
                             elif early_end_y is not None:
                                 question_start_y = current_question.get('start_y', 0)
                                 
-                                # 验证提前结束位置的有效性：必须大于起始位置
                                 if early_end_y > question_start_y:
                                     existing_early_end = current_question.get('early_end_y')
                                     if existing_early_end is None:
@@ -214,20 +220,18 @@ class QuestionExtractor:
                                     if debug_mode:
                                         print(f"    [嵌套小题] 提前结束位置无效 (y={early_end_y} <= start_y={question_start_y})，忽略")
                     
-                    # 继续累积到当前题目中
                     if debug_mode:
                         question_type = current_question.get('question_type', 'unknown')
                         nested_info = f", 已累积子题: {nested_sub_numbers}" if nested_sub_numbers else ""
                         print(f"    [嵌套小题] 继续累积到题目（类型={question_type}{nested_info}）: {line_text[:30]}")
                     continue
                 else:
-                    # 没有当前题目，嵌套子题不应该独立存在
                     if debug_mode:
                         print(f"    [嵌套小题] 警告：没有当前题目，跳过: {line_text[:30]}")
                     continue
             
             # 检查其他类型的题目模式
-            elif self.pattern_matcher.matches_pattern(line_text, 'question'):
+            if self.pattern_matcher.matches_pattern(line_text, 'question'):
                 # 如果当前题目已经有提前结束位置，检查新题目是否在提前结束位置之前
                 if current_question and current_question.get('early_end_y') is not None:
                     y_pos = int(line_y_min)

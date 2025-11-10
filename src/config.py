@@ -40,6 +40,9 @@ class Config:
         
         # 运行模式
         self.mode = "normal"  # debug, normal, fast
+
+        # 题目主类型配置（中文大题 or 阿拉伯数字小题）
+        self.question_primary_type = "chinese"  # chinese 或 arabic
         
         # 题目识别规则（正则表达式模式）
         # 这些模式用于识别题目的开始标记
@@ -141,6 +144,7 @@ class Config:
             "det_limit_side_len": self.det_limit_side_len,
             "det_limit_type": self.det_limit_type,
             "mode": self.mode,
+            "question_primary_type": self.question_primary_type,
             "question_patterns": self.question_patterns,
             "answer_patterns": self.answer_patterns,
             "min_zone_height": self.min_zone_height,

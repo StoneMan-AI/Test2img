@@ -52,6 +52,8 @@ class ZoneExtractor:
         current_question = None
         current_answer = None
         is_chinese_question = False  # 标记是否在中文大题下
+        primary_type = getattr(self.config, 'question_primary_type', 'chinese') if self.config else 'chinese'
+        prefer_chinese_primary = primary_type != 'arabic'
         
         for line_data in ocr_result:
             if not line_data:
@@ -74,42 +76,54 @@ class ZoneExtractor:
             
             # 检查是否是新题目的开始
             if self.pattern_matcher.matches_pattern(line_text, 'question'):
-                # 检查是否是中文数字大题
                 is_current_chinese = self.pattern_matcher.is_chinese_number_question(line_text)
+                is_current_sub = self.pattern_matcher.is_sub_question(line_text)
                 
-                # 如果是中文大题，开始新的大题
                 if is_current_chinese:
-                    # 结束上一个区域
-                    if current_question:
-                        zones.append(current_question)
-                    if current_answer:
-                        zones.append(current_answer)
-                        current_answer = None
-                    
-                    # 开始新的中文大题
-                    current_question = {
-                        'type': 'question',
-                        'x': 0,
-                        'y': int(line_y_min),
-                        'width': page_width,
-                        'height': 0,
-                        'text': line_text,
-                        'start_line': line_text,
-                        'is_chinese_question': True
-                    }
-                    is_chinese_question = True
-                    print(f"    [发现] 发现大题 (行{len(zones)+1}): {line_text[:50]}")
+                    if prefer_chinese_primary:
+                        if current_question:
+                            zones.append(current_question)
+                        if current_answer:
+                            zones.append(current_answer)
+                            current_answer = None
+                        
+                        current_question = {
+                            'type': 'question',
+                            'x': 0,
+                            'y': int(line_y_min),
+                            'width': page_width,
+                            'height': 0,
+                            'text': line_text,
+                            'start_line': line_text,
+                            'is_chinese_question': True
+                        }
+                        is_chinese_question = True
+                        print(f"    [发现] 发现大题 (行{len(zones)+1}): {line_text[:50]}")
+                    else:
+                        boundary_y = int(line_y_min)
+                        if current_question:
+                            height = int(boundary_y - current_question['y'])
+                            if height > 0:
+                                current_question['height'] = height
+                            else:
+                                if debug_mode:
+                                    print(f"    [边界] 中文大题坐标不大于当前题起点，保持原高度")
+                            zones.append(current_question)
+                            current_question = None
+                        if current_answer:
+                            zones.append(current_answer)
+                            current_answer = None
+                        is_chinese_question = False
+                        if debug_mode:
+                            print(f"    [跳过] 中文大题作为段落标题: {line_text[:50]}")
+                        continue
                 
-                # 如果是阿拉伯数字小题
-                elif self.pattern_matcher.is_sub_question(line_text):
-                    # 如果当前在中文大题下，不创建新的独立题目，继续累积
-                    if is_chinese_question and current_question:
-                        # 继续累积到当前大题中，更新高度
+                elif is_current_sub:
+                    if prefer_chinese_primary and is_chinese_question and current_question:
                         current_question['height'] = int(line_y_min - current_question['y'])
                         if debug_mode:
                             print(f"    [小题] 继续累积到大题: {line_text[:30]}")
                     else:
-                        # 不在大题下，创建新的独立小题
                         if current_question:
                             zones.append(current_question)
                         if current_answer:
@@ -129,9 +143,7 @@ class ZoneExtractor:
                         is_chinese_question = False
                         print(f"    [发现] 发现小题 (行{len(zones)+1}): {line_text[:50]}")
                 
-                # 其他类型的题目
                 else:
-                    # 结束上一个区域
                     if current_question:
                         zones.append(current_question)
                     if current_answer:
@@ -159,21 +171,30 @@ class ZoneExtractor:
                 
                 # 如果遇到新的中文大题，结束当前题目
                 if is_current_chinese:
-                    current_question['height'] = int(line_y_min - current_question['y'])
-                    zones.append(current_question)
-                    
-                    current_question = {
-                        'type': 'question',
-                        'x': 0,
-                        'y': int(line_y_min),
-                        'width': page_width,
-                        'height': 0,
-                        'text': line_text,
-                        'start_line': line_text,
-                        'is_chinese_question': True
-                    }
-                    is_chinese_question = True
-                    print(f"    [发现] 发现大题 (行{len(zones)+1}): {line_text[:50]}")
+                    if prefer_chinese_primary:
+                        current_question['height'] = int(line_y_min - current_question['y'])
+                        zones.append(current_question)
+                        
+                        current_question = {
+                            'type': 'question',
+                            'x': 0,
+                            'y': int(line_y_min),
+                            'width': page_width,
+                            'height': 0,
+                            'text': line_text,
+                            'start_line': line_text,
+                            'is_chinese_question': True
+                        }
+                        is_chinese_question = True
+                        print(f"    [发现] 发现大题 (行{len(zones)+1}): {line_text[:50]}")
+                    else:
+                        current_question['height'] = int(line_y_min - current_question['y'])
+                        zones.append(current_question)
+                        current_question = None
+                        is_chinese_question = False
+                        if debug_mode:
+                            print(f"    [跳过] 中文大题作为段落标题: {line_text[:50]}")
+                        continue
                 
                 # 如果遇到小题且不在大题下，结束当前题目
                 elif is_current_sub and not is_chinese_question:
