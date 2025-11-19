@@ -179,10 +179,21 @@ class QuestionExtractor:
                         nested_sub_numbers.append(nested_number)
                         current_question['nested_sub_numbers'] = nested_sub_numbers.copy()
                         
-                        early_end_info = self._check_next_nested_sub_question(
-                            idx, ocr_result, nested_number, page_num, 
-                            all_page_ocr_results, total_pages, debug_mode
-                        )
+                        # 嵌套子题检测（如果启用）
+                        enable_nested_detection = self.config and getattr(self.config, 'enable_nested_sub_detection', True)
+                        if enable_nested_detection:
+                            early_end_info = self._check_next_nested_sub_question(
+                                idx, ocr_result, nested_number, page_num, 
+                                all_page_ocr_results, total_pages, debug_mode
+                            )
+                        else:
+                            # 简化版：不做3行前瞻，直接标记为继续累积
+                            early_end_info = {
+                                'found_next_nested': True,  # 假设还有下一个，继续累积
+                                'cross_page': False,
+                                'early_end_y': None,
+                                'early_end_text': None
+                            }
                         
                         if early_end_info.get('cross_page'):
                             current_question['cross_page'] = True

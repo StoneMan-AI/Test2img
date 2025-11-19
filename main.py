@@ -146,6 +146,8 @@ def main():
     parser.add_argument('--mode', choices=['debug', 'normal', 'fast'], 
                        default='normal',
                        help='运行模式 (默认: normal)')
+    parser.add_argument('--fast-optimize', action='store_true',
+                       help='启用快速优化模式（禁用部分耗时功能以提升速度）')
     parser.add_argument('-t', '--question-type',
                        choices=['0', '1', 'chinese', 'arabic'],
                        default='0',
@@ -164,6 +166,13 @@ def main():
         config.question_primary_type = 'chinese'
     elif question_type_arg in ('1', 'arabic'):
         config.question_primary_type = 'arabic'
+    
+    # 根据命令行参数设置快速优化模式
+    if args.fast_optimize:
+        config.enable_image_preprocessing = False
+        config.enable_text_merging = False
+        config.enable_min_height_calculation = False
+        print("[优化] 快速优化模式已启用：已禁用图像预处理、文本合并、最小高度计算")
     
     # 确保输出目录存在
     config.output_dir.mkdir(parents=True, exist_ok=True)

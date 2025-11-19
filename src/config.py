@@ -27,7 +27,7 @@ class Config:
         self.det_db_unclip_ratio = 1  # 调小一点，框更贴近文字
         
         # 图像预处理配置（用于提升坐标精度）
-        self.enable_image_preprocessing = True  # 是否启用图像预处理（裁剪空白、统一缩放）
+        # 注意：enable_image_preprocessing 已移到性能优化配置部分
         self.preprocess_target_height = 1280  # 预处理目标高度（像素）
         self.preprocess_auto_crop = True  # 是否自动裁剪空白区域
         self.det_limit_side_len = 2048  # 检测输入限制（避免过度压缩）
@@ -40,7 +40,14 @@ class Config:
         
         # 运行模式
         self.mode = "normal"  # debug, normal, fast
-
+        
+        # 性能优化配置（用于加速处理）
+        self.enable_image_preprocessing = True  # 是否启用图像预处理（裁剪空白、统一缩放）
+        self.enable_text_merging = True  # 是否启用文本行合并
+        self.enable_cross_page_detection = True  # 是否启用跨页题目检测和合并
+        self.enable_nested_sub_detection = True  # 是否启用嵌套子题检测（3行前瞻）
+        self.enable_min_height_calculation = False  # 是否计算最小文字高度（默认禁用，节省时间）
+        
         # 题目主类型配置（中文大题 or 阿拉伯数字小题）
         self.question_primary_type = "chinese"  # chinese 或 arabic
         

@@ -351,4 +351,3 @@ class ImageCropper:
             return False
         
         return True
-

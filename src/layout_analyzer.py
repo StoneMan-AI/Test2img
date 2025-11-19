@@ -178,10 +178,14 @@ class LayoutAnalyzer:
             except Exception as e:
                 print(f"  警告: 坐标校准失败: {e}，使用原始坐标")
         
-        # 合并同一行的文本片段
-        merged_ocr_result = self.text_merger.merge_same_line_texts(ocr_result)
-        if len(merged_ocr_result) != len(ocr_result):
-            print(f"  [合并] 行合并完成，从 {len(ocr_result)} 行合并为 {len(merged_ocr_result)} 行")
+        # 合并同一行的文本片段（如果启用）
+        enable_text_merging = self.config and getattr(self.config, 'enable_text_merging', True)
+        if enable_text_merging:
+            merged_ocr_result = self.text_merger.merge_same_line_texts(ocr_result)
+            if len(merged_ocr_result) != len(ocr_result):
+                print(f"  [合并] 行合并完成，从 {len(ocr_result)} 行合并为 {len(merged_ocr_result)} 行")
+        else:
+            merged_ocr_result = ocr_result
         
         # 分析OCR结果，提取题目位置
         # 注意：此时all_page_ocr_results还没有完整收集，所以先不传递跨页参数
@@ -225,12 +229,15 @@ class LayoutAnalyzer:
         total_pages = len(images)
         pending_cross_page_question = None  # 待合并的跨页题目
         
+        # 检查是否启用跨页检测（在整个循环外定义，避免重复检查）
+        enable_cross_page = self.config and getattr(self.config, 'enable_cross_page_detection', True)
+        
         for page_idx, image in enumerate(images, 1):
             print(f"分析第 {page_idx} 页...")
             ocr_result = all_ocr_results[page_idx]
             
-            # 如果有待合并的跨页题目，先尝试将当前页的嵌套子题合并到该题目中
-            if pending_cross_page_question:
+            # 如果有待合并的跨页题目，先尝试将当前页的嵌套子题合并到该题目中（如果启用跨页检测）
+            if enable_cross_page and pending_cross_page_question:
                 cross_page_question, cross_page_from_page = pending_cross_page_question
                 cross_page_to_page = cross_page_question.get('cross_page_to', page_idx)
                 
@@ -357,13 +364,17 @@ class LayoutAnalyzer:
             
             # 处理当前页的题目
             for q in questions:
-                # 检查是否有跨页标记
-                if q.get('cross_page'):
+                # 检查是否有跨页标记（如果启用跨页检测）
+                if enable_cross_page and q.get('cross_page'):
                     # 标记为待合并的跨页题目（推迟到目标页处理）
                     pending_cross_page_question = (q, page_idx)
                     print(f"    [跨页检测] 发现跨页题目，将在第{q.get('cross_page_to', page_idx + 1)}页合并嵌套子题")
                 else:
                     # 正常题目，直接添加
+                    # 如果禁用了跨页检测，清除跨页标记
+                    if not enable_cross_page:
+                        q.pop('cross_page', None)
+                        q.pop('cross_page_to', None)
                     q['image_height'] = image.height
                     q['image_width'] = image.width
                     all_questions.append((page_idx, q, image))
@@ -378,7 +389,10 @@ class LayoutAnalyzer:
         
         print(f"  共识别到 {len(all_questions)} 个题目位置")
         
-        # 第三步: 计算每个题目区域内所有行的最小文字高度
+        # 第三步: 计算每个题目区域内所有行的最小文字高度（如果启用）
+        enable_min_height = self.config and getattr(self.config, 'enable_min_height_calculation', False)
+        if enable_min_height:
+            print("\n--- 计算最小文字高度 ---")
         for i, (page_num, question, image) in enumerate(all_questions):
             question_start_y = question['start_y']
             question_end_y = question.get('end_y')  # 可能有也可能没有
@@ -386,34 +400,40 @@ class LayoutAnalyzer:
             # 获取该题目所在页面的OCR结果
             ocr_result = page_ocr_results.get(page_num, [])
             
-            # 收集该题目区域内所有行的text_height
-            line_heights = []
-            for line_data in ocr_result:
-                if not line_data:
-                    continue
-                
-                line_box = line_data[0]
-                y_coords = [point[1] for point in line_box]
-                line_y_min = min(y_coords)
-                
-                # 检查是否在当前题目区域内
-                if line_y_min >= question_start_y:
-                    # 如果有明确的end_y，检查是否超过
-                    if question_end_y and line_y_min > question_end_y:
-                        break  # 超过题目区域，停止收集
+            # 收集该题目区域内所有行的text_height（如果启用）
+            if enable_min_height:
+                line_heights = []
+                for line_data in ocr_result:
+                    if not line_data:
+                        continue
                     
-                    # 计算该行的高度
-                    line_y_max = max(y_coords)
-                    text_height = int(line_y_max - line_y_min)
-                    if text_height > 0:
-                        line_heights.append(text_height)
-            
-            # 如果收集到多个行高，使用最小值
-            if line_heights:
-                min_text_height = min(line_heights)
-                question['text_height'] = min_text_height
-                if len(line_heights) > 1:
-                    print(f"    题目{i+1}: 更新text_height为{min_text_height} (收集到{len(line_heights)}行)")
+                    line_box = line_data[0]
+                    y_coords = [point[1] for point in line_box]
+                    line_y_min = min(y_coords)
+                    
+                    # 检查是否在当前题目区域内
+                    if line_y_min >= question_start_y:
+                        # 如果有明确的end_y，检查是否超过
+                        if question_end_y and line_y_min > question_end_y:
+                            break  # 超过题目区域，停止收集
+                        
+                        # 计算该行的高度
+                        line_y_max = max(y_coords)
+                        text_height = int(line_y_max - line_y_min)
+                        if text_height > 0:
+                            line_heights.append(text_height)
+                
+                # 如果收集到多个行高，使用最小值
+                if line_heights:
+                    min_text_height = min(line_heights)
+                    question['text_height'] = min_text_height
+                    if len(line_heights) > 1:
+                        print(f"    题目{i+1}: 更新text_height为{min_text_height} (收集到{len(line_heights)}行)")
+            else:
+                # 如果禁用，使用题目起始行的text_height（如果已有）
+                if 'text_height' not in question or question.get('text_height', 0) == 0:
+                    # 使用默认值或从起始行获取
+                    question['text_height'] = question.get('text_height', 20)  # 默认20像素
         
         # 第四步: 确定每个题目的边界
         print("\n--- 确定题目边界 ---")
